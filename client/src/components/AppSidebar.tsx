@@ -43,20 +43,20 @@ export function AppSidebar() {
   const [selectedGroupForAddAgent, setSelectedGroupForAddAgent] = useState<string | null>(null);
 
   const handleCreateAgent = (data: { name: string; role: string; description?: string; color: string }) => {
-    createAgentMutation.mutate({ ...data, description: data.description ?? null });
+    createAgentMutation.mutate({ ...data, description: data.description ?? undefined });
     setCreateAgentOpen(false);
   };
 
   const handleEditAgent = (data: { name: string; role: string; description?: string; color: string }) => {
     if (editingAgent) {
-      updateAgentMutation.mutate({ id: editingAgent.id, updates: { ...data, description: data.description ?? null } });
+      updateAgentMutation.mutate({ id: editingAgent.id, updates: { ...data, description: data.description ?? undefined } });
       setEditingAgent(null);
     }
   };
 
   const handleCreateGroup = (data: { name: string; description?: string }, agentIds: string[]) => {
     createGroupMutation.mutate(
-      { group: { ...data, description: data.description ?? null }, agentIds },
+      { group: { ...data, description: data.description ?? undefined }, agentIds },
       {
         onSuccess: (newGroup) => {
           selectGroup(newGroup.id);
