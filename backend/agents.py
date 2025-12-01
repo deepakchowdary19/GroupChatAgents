@@ -46,9 +46,16 @@ def get_gemini_response(prompt: str, system_prompt: str, max_tokens: int = 500) 
         full_prompt = f"{system_prompt}\n\n{prompt}"
         response = model.generate_content(full_prompt, generation_config={"max_output_tokens": max_tokens})
         
-        # Check if response has valid content
-        if response and hasattr(response, 'text') and response.text:
-            return response.text
+        # Check if response has valid content before accessing text
+        if response and hasattr(response, 'candidates') and response.candidates:
+            try:
+                text = response.text
+                if text:
+                    return text
+            except ValueError:
+                # Response was blocked or has no valid parts
+                print(f"[AGENT] Gemini API blocked/empty response", file=sys.stderr)
+                return None
         return None
     except Exception as e:
         print(f"[AGENT] Gemini API Error: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
