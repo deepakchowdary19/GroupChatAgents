@@ -1,15 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUIStore } from '@/lib/store';
 import { useAgents, useGroups, useMessages, useSendMessage, type GroupWithAgents } from '@/lib/hooks';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { EmptyState } from './EmptyState';
 import { AgentAvatar } from './AgentAvatar';
+import { TypingIndicator } from './TypingIndicator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PanelRightOpen, Users, Loader2 } from 'lucide-react';
-import type { Agent } from '@shared/schema';
+import type { Agent, Message } from '@shared/schema';
 
 export function ChatArea() {
   const { selectedGroupId, rightPanelOpen, setRightPanelOpen, setSelectedAgentId } = useUIStore();
@@ -18,6 +19,8 @@ export function ChatArea() {
   const { data: groups = [] } = useGroups();
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedGroupId);
   const sendMessageMutation = useSendMessage();
+  
+  const [optimisticUserMessage, setOptimisticUserMessage] = useState<Message | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -32,11 +35,31 @@ export function ChatArea() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length]);
+  }, [messages.length, optimisticUserMessage, sendMessageMutation.isPending]);
 
   const handleSendMessage = (content: string) => {
     if (selectedGroupId) {
-      sendMessageMutation.mutate({ groupId: selectedGroupId, content });
+      const newOptimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
+        groupId: selectedGroupId,
+        senderId: null,
+        senderType: 'user',
+        content,
+        createdAt: new Date().toISOString(),
+      };
+      setOptimisticUserMessage(newOptimisticMessage);
+      
+      sendMessageMutation.mutate(
+        { groupId: selectedGroupId, content },
+        {
+          onSuccess: () => {
+            setOptimisticUserMessage(null);
+          },
+          onError: () => {
+            setOptimisticUserMessage(null);
+          },
+        }
+      );
     }
   };
 
@@ -106,17 +129,29 @@ export function ChatArea() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : messages.length === 0 ? (
+          ) : messages.length === 0 && !optimisticUserMessage ? (
             <EmptyState type="no-messages" />
           ) : (
-            messages.map((message) => {
-              const agent = message.senderId 
-                ? agents.find((a) => a.id === message.senderId) 
-                : undefined;
-              return (
-                <ChatMessage key={message.id} message={message} agent={agent} />
-              );
-            })
+            <>
+              {messages.map((message) => {
+                const agent = message.senderId 
+                  ? agents.find((a) => a.id === message.senderId) 
+                  : undefined;
+                return (
+                  <ChatMessage key={message.id} message={message} agent={agent} />
+                );
+              })}
+              {optimisticUserMessage && (
+                <ChatMessage message={optimisticUserMessage} />
+              )}
+              {sendMessageMutation.isPending && groupAgentsList.length > 0 && (
+                <>
+                  {groupAgentsList.map((agent) => (
+                    <TypingIndicator key={agent.id} agent={agent} />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>
