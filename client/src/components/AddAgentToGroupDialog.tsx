@@ -71,7 +71,6 @@ export function AddAgentToGroupDialog({
                           ? 'border-primary bg-primary/5' 
                           : 'border-transparent hover:bg-muted'
                       }`}
-                      onClick={() => toggleAgent(agent.id)}
                       data-testid={`checkbox-add-agent-${agent.id}`}
                     >
                       <Checkbox
