@@ -1,8 +1,30 @@
 from openai import OpenAI
-from typing import Optional
+from typing import Optional, List
 import os
+import re
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+
+def extract_key_facts(message: str) -> List[str]:
+    """Extract key facts from a message for memory."""
+    facts = []
+    
+    # Extract patterns like "X is Y", "X has Y", "X can Y"
+    patterns = [
+        r"([\w\s]+)\s+(?:is|are|was|were)\s+([^.!?]+)",
+        r"([\w\s]+)\s+(?:has|have|had)\s+([^.!?]+)",
+        r"([\w\s]+)\s+(?:can|could|will|would|should|must)\s+([^.!?]+)",
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, message, re.IGNORECASE)
+        for match in matches:
+            fact = f"{match[0].strip()} {match[1].strip()}"
+            if len(fact) > 10 and len(fact) < 200:
+                facts.append(fact)
+    
+    return facts[:3]  # Return top 3 facts
 
 
 def get_openai_client():
@@ -12,17 +34,21 @@ def get_openai_client():
 
 
 class MultiAgentSystem:
-    def __init__(self, manual_agent_description: Optional[str] = None, conversation_history: Optional[list] = None):
+    def __init__(self, manual_agent_description: Optional[str] = None, conversation_history: Optional[list] = None, memories: Optional[List[str]] = None):
         self.manual_agent_description = manual_agent_description or "A helpful AI assistant"
         self.client = get_openai_client()
         self.conversation_history = conversation_history or []
+        self.memories = memories or []
     
     def get_manual_response(self, user_message: str) -> str:
         if not self.client:
             return self._simulate_manual_response(user_message)
         
         try:
-            system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally. Be direct, concise, and practical. Don't introduce yourself or explain what you're doing - just provide your response."""
+            system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally. Be direct, concise, and practical. Don't introduce yourself or explain what you're doing - just provide your response.
+            
+Memory from previous conversations:
+{chr(10).join([f"- {m}" for m in self.memories]) if self.memories else "No prior context available"}"""
             
             messages = self.conversation_history.copy()
             messages.append({"role": "user", "content": user_message})
@@ -95,8 +121,8 @@ Suggestions for improvement:
 Note: For full AI-powered critique, configure your OpenAI API key."""
 
 
-def process_multi_agent_chat(user_message: str, agent_description: Optional[str] = None, conversation_history: Optional[list] = None) -> dict:
-    system = MultiAgentSystem(agent_description, conversation_history)
+def process_multi_agent_chat(user_message: str, agent_description: Optional[str] = None, conversation_history: Optional[list] = None, memories: Optional[List[str]] = None) -> dict:
+    system = MultiAgentSystem(agent_description, conversation_history, memories)
     
     manual_response = system.get_manual_response(user_message)
     

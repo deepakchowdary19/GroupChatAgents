@@ -61,3 +61,13 @@ class Conversation(Base):
     manual_agent_response = Column(Text, nullable=True)
     critic_agent_response = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class Memory(Base):
+    __tablename__ = "memories"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    group_id = Column(String, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    importance = Column(String, default="normal")
+    created_at = Column(DateTime, server_default=func.now())

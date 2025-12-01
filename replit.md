@@ -94,6 +94,7 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 - `group_members` - Many-to-many relationship between groups and agents
 - `messages` - Chat messages
 - `conversations` - Full conversation records with agent responses
+- `memories` - Stored facts/context extracted from conversations for semantic awareness
 
 ## Running the Application
 
@@ -105,26 +106,37 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 - **Backend API**: Python FastAPI server
 - **Frontend**: Vite development server
 
-## Recent Changes (Session 2)
-- Fixed TypeScript type errors in frontend (AppSidebar.tsx)
-- Added support for OpenAI API key integration (OPENAI_API_KEY secret)
-- Updated agent system to use direct OpenAI API instead of smolagents' LiteLLMModel
-- Fixed chat message API - verified working with 200 OK responses
-- Agent responses now use OpenAI GPT-4O-Mini for intelligent responses
-- Fallback to simulated responses when OpenAI API key is not configured
-- Implemented optimistic UI updates - user messages appear immediately
-- Added typing indicators while AI agents generate responses
-- Improved chat UX with real-time message feedback
+## Recent Changes (Session 3)
+- **Memory System**: Implemented basic semantic memory for multi-agent system
+  - Added `memories` table to store extracted key facts from conversations
+  - Created `extract_key_facts()` function to extract important information from messages
+  - Agents now retrieve and inject stored memories into system prompts for context awareness
+  - Memories are automatically extracted and stored after each agent response
+  - Pattern-based extraction: "X is Y", "X has Y", "X can Y" statements
+  - Retrieves up to 5 most recent memories per group to maintain conversation context
+- Updated MultiAgentSystem to accept and use memories in prompts
+- Memory integration in chat API: retrieves memories when processing messages and stores extracted facts
 
 ## Features
 - **Multi-Agent Chat**: Conversation with Assistant and Critic agents
+- **Memory System**: Basic semantic memory with fact extraction and retrieval
 - **Real-time AI Responses**: Uses OpenAI GPT-4O-Mini for intelligent responses
 - **Typing Indicators**: Shows animated typing indicator while agents respond
 - **Optimistic Updates**: User messages appear instantly for better UX
 - **Agent Management**: Create, edit, and delete custom agents
 - **Group Management**: Organize agents into chat groups
-- **Database Persistence**: All conversations stored in PostgreSQL
+- **Database Persistence**: All conversations and memories stored in PostgreSQL
+- **Auto-scroll**: Chat automatically scrolls to latest messages
+- **Delete Group History**: Clear all messages and conversations for a group
+
+## Memory System Details
+- **Extraction**: Pattern-based extraction pulls key statements from user and AI messages
+- **Storage**: Important facts stored in dedicated memories table per group
+- **Retrieval**: Up to 5 most recent memories injected into agent system prompts
+- **Context**: Agents see conversation history (last 10 messages) + stored memories
+- **Future Enhancement**: Can be upgraded to semantic search with Hugging Face embeddings
 
 ## Known Limitations
+- Memory extraction is pattern-based; future versions could use semantic search with embeddings
 - WebSocket streaming not yet implemented (messages appear all at once when API returns)
 - Full real-time streaming would require WebSocket implementation

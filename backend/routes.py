@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from backend.database import get_db
 from backend import models, schemas
-from backend.agents import process_multi_agent_chat
+from backend.agents import process_multi_agent_chat, extract_key_facts
 
 router = APIRouter()
 
@@ -281,7 +281,12 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
             else:
                 conversation_history.append({"role": "assistant", "content": msg.content})
         
-        result = process_multi_agent_chat(message.content, agent_description, conversation_history)
+        memories = db.query(models.Memory).filter(
+            models.Memory.group_id == group_id
+        ).order_by(models.Memory.created_at.desc()).limit(5).all()
+        memory_contents = [m.content for m in memories]
+        
+        result = process_multi_agent_chat(message.content, agent_description, conversation_history, memory_contents)
         
         if manual_agent:
             manual_msg = models.Message(
@@ -315,6 +320,17 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
         )
         db.add(conversation)
         db.commit()
+        
+        facts_to_store = extract_key_facts(message.content) + extract_key_facts(result["manual_agent_response"])
+        for fact in facts_to_store[:5]:
+            memory = models.Memory(
+                group_id=group_id,
+                content=fact,
+                importance="normal"
+            )
+            db.add(memory)
+        if facts_to_store:
+            db.commit()
     
     all_messages = [user_msg] + response_messages
     
