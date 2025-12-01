@@ -2,6 +2,7 @@ from openai import OpenAI
 from typing import Optional, List
 import os
 import re
+from backend.config import OPENAI_API_KEY
 
 
 def extract_key_facts(message: str) -> List[str]:
@@ -26,9 +27,8 @@ def extract_key_facts(message: str) -> List[str]:
 
 
 def get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY", "")
-    if api_key:
-        return OpenAI(api_key=api_key)
+    if OPENAI_API_KEY:
+        return OpenAI(api_key=OPENAI_API_KEY)
     return None
 
 
