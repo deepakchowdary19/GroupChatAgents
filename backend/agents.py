@@ -1,53 +1,23 @@
-from smolagents import CodeAgent, tool, LiteLLMModel
+from openai import OpenAI
 from typing import Optional
 import os
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
-def get_model():
+def get_openai_client():
     if OPENAI_API_KEY:
-        return LiteLLMModel(model_id="gpt-4o-mini", api_key=OPENAI_API_KEY)
+        return OpenAI(api_key=OPENAI_API_KEY)
     return None
-
-
-@tool
-def analyze_response(response: str, context: str) -> str:
-    """Analyzes a response and provides constructive feedback.
-    
-    Args:
-        response: The response text to analyze
-        context: The original context/question
-    
-    Returns:
-        A critical analysis of the response
-    """
-    return f"Analysis of response to '{context[:50]}...': {response[:100]}..."
 
 
 class MultiAgentSystem:
     def __init__(self, manual_agent_description: Optional[str] = None):
         self.manual_agent_description = manual_agent_description or "A helpful AI assistant"
-        self.model = get_model()
-        
-        if self.model:
-            self.manual_agent = CodeAgent(
-                tools=[],
-                model=self.model,
-                max_steps=3
-            )
-            
-            self.critic_agent = CodeAgent(
-                tools=[analyze_response],
-                model=self.model,
-                max_steps=3
-            )
-        else:
-            self.manual_agent = None
-            self.critic_agent = None
+        self.client = get_openai_client()
     
     def get_manual_response(self, user_message: str) -> str:
-        if not self.manual_agent:
+        if not self.client:
             return self._simulate_manual_response(user_message)
         
         try:
@@ -57,13 +27,17 @@ User message: {user_message}
 
 Please provide a helpful, thoughtful response to the user's message."""
             
-            response = self.manual_agent.run(prompt)
-            return str(response)
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500
+            )
+            return response.choices[0].message.content
         except Exception as e:
             return self._simulate_manual_response(user_message)
     
     def get_critic_response(self, user_message: str, manual_response: str) -> str:
-        if not self.critic_agent:
+        if not self.client:
             return self._simulate_critic_response(user_message, manual_response)
         
         try:
@@ -80,8 +54,12 @@ Please provide a brief, constructive critique of the response above. Focus on:
 
 Keep your critique concise and constructive."""
             
-            response = self.critic_agent.run(prompt)
-            return str(response)
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=300
+            )
+            return response.choices[0].message.content
         except Exception as e:
             return self._simulate_critic_response(user_message, manual_response)
     
