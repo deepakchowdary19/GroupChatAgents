@@ -54,7 +54,7 @@ Memory from previous conversations:
             messages.insert(0, {"role": "system", "content": system_prompt})
             
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4",
                 messages=messages,
                 max_tokens=500,
                 temperature=0.7
@@ -77,7 +77,7 @@ Response: {manual_response}
 Feedback:"""
             
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
