@@ -112,7 +112,19 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 - Fixed chat message API - verified working with 200 OK responses
 - Agent responses now use OpenAI GPT-4O-Mini for intelligent responses
 - Fallback to simulated responses when OpenAI API key is not configured
+- Implemented optimistic UI updates - user messages appear immediately
+- Added typing indicators while AI agents generate responses
+- Improved chat UX with real-time message feedback
+
+## Features
+- **Multi-Agent Chat**: Conversation with Assistant and Critic agents
+- **Real-time AI Responses**: Uses OpenAI GPT-4O-Mini for intelligent responses
+- **Typing Indicators**: Shows animated typing indicator while agents respond
+- **Optimistic Updates**: User messages appear instantly for better UX
+- **Agent Management**: Create, edit, and delete custom agents
+- **Group Management**: Organize agents into chat groups
+- **Database Persistence**: All conversations stored in PostgreSQL
 
 ## Known Limitations
-- Messages appear all at once (no streaming). WebSocket implementation for real-time streaming is a future enhancement
-- Add agent to group feature fixed and working correctly
+- WebSocket streaming not yet implemented (messages appear all at once when API returns)
+- Full real-time streaming would require WebSocket implementation
