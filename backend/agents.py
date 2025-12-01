@@ -46,7 +46,10 @@ def get_gemini_response(prompt: str, system_prompt: str, max_tokens: int = 500) 
         full_prompt = f"{system_prompt}\n\n{prompt}"
         response = model.generate_content(full_prompt, generation_config={"max_output_tokens": max_tokens})
         
-        return response.text if response.text else None
+        # Check if response has valid content
+        if response and hasattr(response, 'text') and response.text:
+            return response.text
+        return None
     except Exception as e:
         print(f"[AGENT] Gemini API Error: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
         return None
