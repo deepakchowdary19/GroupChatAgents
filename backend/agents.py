@@ -21,16 +21,16 @@ class MultiAgentSystem:
             return self._simulate_manual_response(user_message)
         
         try:
-            prompt = f"""You are {self.manual_agent_description}.
-            
-User message: {user_message}
-
-Please provide a helpful, thoughtful response to the user's message."""
+            system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally, as if you're an experienced consultant having a conversation. Be direct, concise, and practical. Avoid being overly formal or robotic. Focus on providing value and insight."""
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=500
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=500,
+                temperature=0.7
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -41,23 +41,22 @@ Please provide a helpful, thoughtful response to the user's message."""
             return self._simulate_critic_response(user_message, manual_response)
         
         try:
-            prompt = f"""You are a constructive critic agent. Your role is to analyze responses and provide helpful feedback.
+            system_prompt = """You are a thoughtful reviewer and consultant. Review the response critically but constructively. Speak as if you're providing peer feedback to a colleague. Be concise, direct, and focus on practical improvements. Sound like a professional, not an automated system."""
+            
+            prompt = f"""Question: {user_message}
 
-Original user question: {user_message}
+Response: {manual_response}
 
-Response from the main agent: {manual_response}
-
-Please provide a brief, constructive critique of the response above. Focus on:
-1. Accuracy and completeness
-2. Clarity and helpfulness
-3. Any improvements that could be made
-
-Keep your critique concise and constructive."""
+Please provide brief, constructive feedback on this response. What could be improved or what works well?"""
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=300
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=300,
+                temperature=0.7
             )
             return response.choices[0].message.content
         except Exception as e:
