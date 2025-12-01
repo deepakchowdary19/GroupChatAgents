@@ -148,3 +148,14 @@ export function useSendMessage() {
     },
   });
 }
+
+export function useDeleteGroupMessages() {
+  return useMutation({
+    mutationFn: async (groupId: string) => {
+      await apiRequest('DELETE', `/api/groups/${groupId}/messages`);
+    },
+    onSuccess: (_, groupId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups', groupId, 'messages'] });
+    },
+  });
+}

@@ -12,23 +12,25 @@ def get_openai_client():
 
 
 class MultiAgentSystem:
-    def __init__(self, manual_agent_description: Optional[str] = None):
+    def __init__(self, manual_agent_description: Optional[str] = None, conversation_history: Optional[list] = None):
         self.manual_agent_description = manual_agent_description or "A helpful AI assistant"
         self.client = get_openai_client()
+        self.conversation_history = conversation_history or []
     
     def get_manual_response(self, user_message: str) -> str:
         if not self.client:
             return self._simulate_manual_response(user_message)
         
         try:
-            system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally, as if you're an experienced consultant having a conversation. Be direct, concise, and practical. Avoid being overly formal or robotic. Focus on providing value and insight."""
+            system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally. Be direct, concise, and practical. Don't introduce yourself or explain what you're doing - just provide your response."""
+            
+            messages = self.conversation_history.copy()
+            messages.append({"role": "user", "content": user_message})
+            messages.insert(0, {"role": "system", "content": system_prompt})
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
+                messages=messages,
                 max_tokens=500,
                 temperature=0.7
             )
@@ -41,13 +43,13 @@ class MultiAgentSystem:
             return self._simulate_critic_response(user_message, manual_response)
         
         try:
-            system_prompt = """You are a thoughtful reviewer and consultant. Review the response critically but constructively. Speak as if you're providing peer feedback to a colleague. Be concise, direct, and focus on practical improvements. Sound like a professional, not an automated system."""
+            system_prompt = """You are a thoughtful reviewer. Review responses critically but constructively. Provide brief feedback focused on practical improvements. Don't explain what you're doing - just give your feedback."""
             
             prompt = f"""Question: {user_message}
 
 Response: {manual_response}
 
-Please provide brief, constructive feedback on this response. What could be improved or what works well?"""
+Feedback:"""
             
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -93,8 +95,8 @@ Suggestions for improvement:
 Note: For full AI-powered critique, configure your OpenAI API key."""
 
 
-def process_multi_agent_chat(user_message: str, agent_description: Optional[str] = None) -> dict:
-    system = MultiAgentSystem(agent_description)
+def process_multi_agent_chat(user_message: str, agent_description: Optional[str] = None, conversation_history: Optional[list] = None) -> dict:
+    system = MultiAgentSystem(agent_description, conversation_history)
     
     manual_response = system.get_manual_response(user_message)
     

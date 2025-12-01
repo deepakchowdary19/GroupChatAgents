@@ -220,6 +220,18 @@ def get_messages(group_id: str, db: Session = Depends(get_db)):
     ]
 
 
+@router.delete("/api/groups/{group_id}/messages")
+def delete_group_messages(group_id: str, db: Session = Depends(get_db)):
+    group = db.query(models.Group).filter(models.Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    db.query(models.Message).filter(models.Message.group_id == group_id).delete()
+    db.query(models.Conversation).filter(models.Conversation.group_id == group_id).delete()
+    db.commit()
+    return {"message": "Chat history deleted"}
+
+
 @router.post("/api/groups/{group_id}/messages", response_model=List[schemas.MessageResponse])
 def send_message(group_id: str, message: schemas.MessageCreate, db: Session = Depends(get_db)):
     group = db.query(models.Group).filter(models.Group.id == group_id).first()
@@ -258,7 +270,18 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
     if manual_agent is not None or critic_agent is not None:
         agent_description = str(manual_agent.description) if manual_agent and manual_agent.description else "A helpful AI assistant"
         
-        result = process_multi_agent_chat(message.content, agent_description)
+        prev_messages = db.query(models.Message).filter(
+            models.Message.group_id == group_id
+        ).order_by(models.Message.created_at).limit(10).all()
+        
+        conversation_history = []
+        for msg in prev_messages[-10:]:
+            if msg.sender_type == "user":
+                conversation_history.append({"role": "user", "content": msg.content})
+            else:
+                conversation_history.append({"role": "assistant", "content": msg.content})
+        
+        result = process_multi_agent_chat(message.content, agent_description, conversation_history)
         
         if manual_agent:
             manual_msg = models.Message(

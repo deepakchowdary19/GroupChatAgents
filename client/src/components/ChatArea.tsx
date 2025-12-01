@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useUIStore } from '@/lib/store';
-import { useAgents, useGroups, useMessages, useSendMessage, type GroupWithAgents } from '@/lib/hooks';
+import { useAgents, useGroups, useMessages, useSendMessage, useDeleteGroupMessages, type GroupWithAgents } from '@/lib/hooks';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { EmptyState } from './EmptyState';
@@ -9,7 +9,7 @@ import { TypingIndicator } from './TypingIndicator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { PanelRightOpen, Users, Loader2 } from 'lucide-react';
+import { PanelRightOpen, Users, Loader2, Trash2 } from 'lucide-react';
 import type { Agent, Message } from '@shared/schema';
 
 export function ChatArea() {
@@ -19,6 +19,7 @@ export function ChatArea() {
   const { data: groups = [] } = useGroups();
   const { data: messages = [], isLoading: messagesLoading } = useMessages(selectedGroupId);
   const sendMessageMutation = useSendMessage();
+  const deleteMessagesMutation = useDeleteGroupMessages();
   
   const [optimisticUserMessage, setOptimisticUserMessage] = useState<Message | null>(null);
 
@@ -112,6 +113,19 @@ export function ChatArea() {
               </Badge>
             ))}
           </div>
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            onClick={() => {
+              if (confirm('Delete all chat history for this group?')) {
+                deleteMessagesMutation.mutate(selectedGroupId!);
+              }
+            }}
+            title="Delete chat history"
+            data-testid="button-delete-history"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
           <Button 
             size="icon" 
             variant="ghost" 
