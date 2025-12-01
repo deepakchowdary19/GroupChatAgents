@@ -41,7 +41,7 @@ def get_gemini_response(prompt: str, system_prompt: str, max_tokens: int = 500) 
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         full_prompt = f"{system_prompt}\n\n{prompt}"
         response = model.generate_content(full_prompt, generation_config={"max_output_tokens": max_tokens})
