@@ -24,7 +24,9 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 ```
 ├── backend/
 │   ├── __init__.py
-│   ├── agents.py         # Multi-agent system with smolagents
+│   ├── agents.py         # Multi-agent orchestration logic
+│   ├── llm.py            # LLM provider orchestration (OpenAI + Gemini)
+│   ├── memory.py         # Memory extraction and formatting
 │   ├── config.py         # Configuration and environment variables
 │   ├── database.py       # SQLAlchemy database setup
 │   ├── models.py         # Database models

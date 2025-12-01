@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List
 from backend.database import get_db
 from backend import models, schemas
-from backend.agents import process_multi_agent_chat, extract_key_facts
+from backend.agents import process_multi_agent_chat
+from backend.memory import extract_key_facts
 
 router = APIRouter()
 
