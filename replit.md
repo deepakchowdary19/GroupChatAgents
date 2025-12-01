@@ -8,9 +8,9 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 ### Backend (Python/FastAPI)
 - **Framework**: FastAPI with uvicorn ASGI server
 - **Database**: External PostgreSQL (Aiven)
-- **AI Integration**: Direct OpenAI API (gpt-4o-mini model)
+- **AI Integration**: OpenAI API (gpt-3.5-turbo) with Google Gemini fallback
 - **Port**: 8000
-- **Key Dependencies**: openai, litellm, sqlalchemy, pydantic
+- **Key Dependencies**: openai, google-generativeai, sqlalchemy, pydantic
 
 ### Frontend (React/Vite)
 - **Framework**: React 18 with TypeScript
@@ -83,7 +83,8 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 - `AIVEN_DATABASE_URL` - PostgreSQL connection string (Aiven)
 
 ### Optional
-- `OPENAI_API_KEY` - For actual AI responses (without this, simulated responses are used)
+- `OPENAI_API_KEY` - Primary AI provider (gpt-3.5-turbo)
+- `GEMINI_API_KEY` - Fallback AI provider (used if OpenAI quota exhausted)
 - `HF_TOKEN` - Hugging Face token for advanced models
 
 ## Database Schema
@@ -106,7 +107,17 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 - **Backend API**: Python FastAPI server
 - **Frontend**: Vite development server
 
-## Recent Changes (Session 3)
+## Recent Changes (Session 4)
+- **Gemini Fallback Integration**: Added Google Gemini as automatic fallback provider
+  - Created `get_gemini_response()` function to handle Gemini API calls
+  - Updated `get_manual_response()` to try OpenAI first, then Gemini if OpenAI fails
+  - Updated `get_critic_response()` to try OpenAI first, then Gemini if OpenAI fails
+  - Installed google-generativeai package for Gemini support
+  - Added GEMINI_API_KEY to backend configuration
+  - Graceful degradation: When both providers fail, falls back to simulated responses
+  - Logs indicate which provider is being used for debugging
+
+## Previous Changes (Session 3)
 - **Memory System**: Implemented basic semantic memory for multi-agent system
   - Added `memories` table to store extracted key facts from conversations
   - Created `extract_key_facts()` function to extract important information from messages
@@ -120,7 +131,8 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 ## Features
 - **Multi-Agent Chat**: Conversation with Assistant and Critic agents
 - **Memory System**: Basic semantic memory with fact extraction and retrieval
-- **Real-time AI Responses**: Uses OpenAI GPT-4O-Mini for intelligent responses
+- **Dual AI Provider**: OpenAI with automatic Gemini fallback for reliability
+- **Real-time AI Responses**: Uses gpt-3.5-turbo (OpenAI) or gemini-pro (Gemini)
 - **Typing Indicators**: Shows animated typing indicator while agents respond
 - **Optimistic Updates**: User messages appear instantly for better UX
 - **Agent Management**: Create, edit, and delete custom agents

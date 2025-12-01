@@ -2,7 +2,8 @@ from openai import OpenAI
 from typing import Optional, List
 import os
 import re
-from backend.config import OPENAI_API_KEY
+import sys
+from backend.config import OPENAI_API_KEY, GEMINI_API_KEY
 
 
 def extract_key_facts(message: str) -> List[str]:
@@ -32,6 +33,25 @@ def get_openai_client():
     return None
 
 
+def get_gemini_response(prompt: str, system_prompt: str, max_tokens: int = 500) -> Optional[str]:
+    """Get response from Google Gemini API as fallback."""
+    if not GEMINI_API_KEY:
+        return None
+    
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-pro")
+        
+        full_prompt = f"{system_prompt}\n\n{prompt}"
+        response = model.generate_content(full_prompt, generation_config={"max_output_tokens": max_tokens})
+        
+        return response.text if response.text else None
+    except Exception as e:
+        print(f"[AGENT] Gemini API Error: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
+        return None
+
+
 class MultiAgentSystem:
     def __init__(self, manual_agent_description: Optional[str] = None, conversation_history: Optional[list] = None, memories: Optional[List[str]] = None):
         self.manual_agent_description = manual_agent_description or "A helpful AI assistant"
@@ -40,56 +60,70 @@ class MultiAgentSystem:
         self.memories = memories or []
     
     def get_manual_response(self, user_message: str) -> str:
-        if not self.client:
-            return self._simulate_manual_response(user_message)
-        
-        try:
-            system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally. Be direct, concise, and practical. Don't introduce yourself or explain what you're doing - just provide your response.
+        system_prompt = f"""You are {self.manual_agent_description}. Respond naturally and professionally. Be direct, concise, and practical. Don't introduce yourself or explain what you're doing - just provide your response.
             
 Memory from previous conversations:
 {chr(10).join([f"- {m}" for m in self.memories]) if self.memories else "No prior context available"}"""
-            
-            messages = self.conversation_history.copy()
-            messages.append({"role": "user", "content": user_message})
-            messages.insert(0, {"role": "system", "content": system_prompt})
-            
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
-                max_tokens=500,
-                temperature=0.7
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            import sys
-            print(f"[AGENT] OpenAI API Error: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
-            return self._simulate_manual_response(user_message)
+        
+        # Try OpenAI first
+        if self.client:
+            try:
+                messages = self.conversation_history.copy()
+                messages.append({"role": "user", "content": user_message})
+                messages.insert(0, {"role": "system", "content": system_prompt})
+                
+                response = self.client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages,
+                    max_tokens=500,
+                    temperature=0.7
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"[AGENT] OpenAI API Error: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
+        
+        # Fallback to Gemini
+        gemini_response = get_gemini_response(user_message, system_prompt, max_tokens=500)
+        if gemini_response:
+            print("[AGENT] Using Gemini as fallback", file=sys.stderr)
+            return gemini_response
+        
+        # Last resort: simulate
+        return self._simulate_manual_response(user_message)
     
     def get_critic_response(self, user_message: str, manual_response: str) -> str:
-        if not self.client:
-            return self._simulate_critic_response(user_message, manual_response)
+        system_prompt = """You are a thoughtful reviewer. Review responses critically but constructively. Provide brief feedback focused on practical improvements. Don't explain what you're doing - just give your feedback."""
         
-        try:
-            system_prompt = """You are a thoughtful reviewer. Review responses critically but constructively. Provide brief feedback focused on practical improvements. Don't explain what you're doing - just give your feedback."""
-            
-            prompt = f"""Question: {user_message}
+        prompt = f"""Question: {user_message}
 
 Response: {manual_response}
 
 Feedback:"""
-            
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=300,
-                temperature=0.7
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return self._simulate_critic_response(user_message, manual_response)
+        
+        # Try OpenAI first
+        if self.client:
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=300,
+                    temperature=0.7
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"[AGENT] OpenAI API Error (critic): {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
+        
+        # Fallback to Gemini
+        gemini_response = get_gemini_response(prompt, system_prompt, max_tokens=300)
+        if gemini_response:
+            print("[AGENT] Using Gemini for critic (fallback)", file=sys.stderr)
+            return gemini_response
+        
+        # Last resort: simulate
+        return self._simulate_critic_response(user_message, manual_response)
     
     def _simulate_manual_response(self, user_message: str) -> str:
         return f"""As {self.manual_agent_description}, I've analyzed your message.
