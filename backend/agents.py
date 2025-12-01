@@ -54,13 +54,15 @@ Memory from previous conversations:
             messages.insert(0, {"role": "system", "content": system_prompt})
             
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=500,
                 temperature=0.7
             )
             return response.choices[0].message.content
         except Exception as e:
+            import sys
+            print(f"[AGENT] OpenAI API Error: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
             return self._simulate_manual_response(user_message)
     
     def get_critic_response(self, user_message: str, manual_response: str) -> str:
@@ -77,7 +79,7 @@ Response: {manual_response}
 Feedback:"""
             
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
