@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.local
+__pycache__/
+*.pyc
+*.pyo
+.pythonlibs/
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+*.log
+.replit
+replit.nix
