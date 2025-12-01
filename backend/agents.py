@@ -3,8 +3,6 @@ from typing import Optional, List
 import os
 import re
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-
 
 def extract_key_facts(message: str) -> List[str]:
     """Extract key facts from a message for memory."""
@@ -28,8 +26,9 @@ def extract_key_facts(message: str) -> List[str]:
 
 
 def get_openai_client():
-    if OPENAI_API_KEY:
-        return OpenAI(api_key=OPENAI_API_KEY)
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if api_key:
+        return OpenAI(api_key=api_key)
     return None
 
 
