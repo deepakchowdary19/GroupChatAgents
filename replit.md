@@ -8,14 +8,16 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 ### Backend (Python/FastAPI)
 - **Framework**: FastAPI with uvicorn ASGI server
 - **Database**: External PostgreSQL (Aiven)
-- **Multi-Agent System**: smolagents from Hugging Face
+- **AI Integration**: Direct OpenAI API (gpt-4o-mini model)
 - **Port**: 8000
+- **Key Dependencies**: openai, litellm, sqlalchemy, pydantic
 
 ### Frontend (React/Vite)
 - **Framework**: React 18 with TypeScript
 - **Styling**: Tailwind CSS with Radix UI components
 - **State Management**: Zustand + React Query
 - **Port**: 5000 (proxies to backend on 8000)
+- **Features**: Real-time agent chat, group management, agent creation
 
 ## Project Structure
 
@@ -103,8 +105,14 @@ A multi-agent chat application built with FastAPI backend and React frontend, fe
 - **Backend API**: Python FastAPI server
 - **Frontend**: Vite development server
 
-## Recent Changes
-- Converted from Express.js to FastAPI backend
-- Integrated smolagents for multi-agent system
-- Connected to external Aiven PostgreSQL database
-- Added default Manual Agent and Critic Agent
+## Recent Changes (Session 2)
+- Fixed TypeScript type errors in frontend (AppSidebar.tsx)
+- Added support for OpenAI API key integration (OPENAI_API_KEY secret)
+- Updated agent system to use direct OpenAI API instead of smolagents' LiteLLMModel
+- Fixed chat message API - verified working with 200 OK responses
+- Agent responses now use OpenAI GPT-4O-Mini for intelligent responses
+- Fallback to simulated responses when OpenAI API key is not configured
+
+## Known Limitations
+- Messages appear all at once (no streaming). WebSocket implementation for real-time streaming is a future enhancement
+- Add agent to group feature fixed and working correctly
