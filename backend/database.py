@@ -20,5 +20,11 @@ def get_db():
         db.close()
 
 def init_db():
-    from backend import models
-    Base.metadata.create_all(bind=engine)
+    try:
+        from backend import models
+        print("Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        print("Database initialized successfully")
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        print("Continuing without database connection...")

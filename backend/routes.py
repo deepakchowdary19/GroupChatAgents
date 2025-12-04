@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List
 from backend.database import get_db
 from backend import models, schemas
-from backend.agents import process_multi_agent_chat
-from backend.memory import extract_key_facts
+from backend.orchestrator import process_multi_agent_chat, stream_multi_agent_chat
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
@@ -249,6 +249,19 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
     db.commit()
     db.refresh(user_msg)
     
+    # If this is an agent message (not from user), just save it and return
+    if message.senderType == "agent":
+        return [
+            {
+                "id": user_msg.id,
+                "groupId": user_msg.group_id,
+                "senderId": user_msg.sender_id,
+                "senderType": user_msg.sender_type,
+                "content": user_msg.content,
+                "createdAt": user_msg.created_at
+            }
+        ]
+    
     members = db.query(models.GroupMember).filter(
         models.GroupMember.group_id == group_id
     ).all()
@@ -269,32 +282,36 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
     response_messages = []
     
     if manual_agent is not None or critic_agent is not None:
-        agent_description = str(manual_agent.description) if manual_agent and manual_agent.description else "A helpful AI assistant"
+        # Extract agent description safely
+        if manual_agent is not None:
+            desc = manual_agent.description
+            agent_description = str(desc) if desc is not None else "A helpful AI assistant"
+        else:
+            agent_description = "A helpful AI assistant"
         
-        prev_messages = db.query(models.Message).filter(
-            models.Message.group_id == group_id
-        ).order_by(models.Message.created_at).limit(10).all()
+        # Process with critic agent - memory retrieval happens in orchestrator via vector search
+        result = process_multi_agent_chat(
+            user_message=message.content,
+            agent_id=group_id,
+            agent_description=agent_description,
+            conversation_history=None,  # Not needed - orchestrator uses vector memory
+            store_memory=True
+        )
         
-        conversation_history = []
-        for msg in prev_messages[-10:]:
-            if msg.sender_type == "user":
-                conversation_history.append({"role": "user", "content": msg.content})
-            else:
-                conversation_history.append({"role": "assistant", "content": msg.content})
+        # Get the final response (could be from all_responses or manual_agent_response)
+        final_response = result.get("manual_agent_response", "")
+        all_responses = result.get("all_responses", [])
         
-        memories = db.query(models.Memory).filter(
-            models.Memory.group_id == group_id
-        ).order_by(models.Memory.created_at.desc()).limit(5).all()
-        memory_contents = [m.content for m in memories]
+        # Use the last response from all_responses if available, otherwise use manual_agent_response
+        if all_responses:
+            final_response = all_responses[-1]
         
-        result = process_multi_agent_chat(message.content, agent_description, conversation_history, memory_contents)
-        
-        if manual_agent:
+        if manual_agent and final_response:
             manual_msg = models.Message(
                 group_id=group_id,
                 sender_id=manual_agent.id,
                 sender_type="agent",
-                content=result["manual_agent_response"]
+                content=final_response
             )
             db.add(manual_msg)
             db.commit()
@@ -302,36 +319,49 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
             response_messages.append(manual_msg)
         
         if critic_agent:
+            # Ensure critic response is stored as text; serialize if dict
+            critic_content = result["critic_agent_response"]
+            if isinstance(critic_content, dict):
+                import json
+                critic_content = json.dumps(critic_content, ensure_ascii=False)
             critic_msg = models.Message(
                 group_id=group_id,
                 sender_id=critic_agent.id,
                 sender_type="agent",
-                content=result["critic_agent_response"]
+                content=critic_content
             )
             db.add(critic_msg)
             db.commit()
             db.refresh(critic_msg)
             response_messages.append(critic_msg)
         
+        # Serialize critic response in conversation if it's a dict
+        import json
+        critic_conv = result.get("critic_agent_response", "")
+        if isinstance(critic_conv, dict):
+            critic_conv = json.dumps(critic_conv, ensure_ascii=False)
         conversation = models.Conversation(
             group_id=group_id,
             user_message=message.content,
-            manual_agent_response=result["manual_agent_response"],
-            critic_agent_response=result["critic_agent_response"]
+            manual_agent_response=final_response,
+            critic_agent_response=critic_conv
         )
         db.add(conversation)
         db.commit()
         
-        facts_to_store = extract_key_facts(message.content) + extract_key_facts(result["manual_agent_response"])
-        for fact in facts_to_store[:5]:
+        # Store basic facts as memories (simplified - no LLM extraction for now)
+        facts_to_store = [
+            f"User asked: {message.content[:100]}",
+            f"Response: {final_response[:100]}" if final_response else ""
+        ]
+        for fact in [f for f in facts_to_store if f]:
             memory = models.Memory(
                 group_id=group_id,
                 content=fact,
                 importance="normal"
             )
             db.add(memory)
-        if facts_to_store:
-            db.commit()
+        db.commit()
     
     all_messages = [user_msg] + response_messages
     
@@ -348,10 +378,117 @@ def send_message(group_id: str, message: schemas.MessageCreate, db: Session = De
     ]
 
 
+
 @router.post("/api/chat", response_model=schemas.AgentChatResponse)
 def chat_with_agents(request: schemas.AgentChatRequest):
-    result = process_multi_agent_chat(request.message, request.agent_description)
+    # Use a default agent_id if not provided
+    agent_id = "default_agent"
+    result = process_multi_agent_chat(
+        user_message=request.message,
+        agent_id=agent_id,
+        agent_description=request.agent_description,
+        store_memory=True
+    )
     return result
+
+
+@router.post("/api/chat/stream")
+async def chat_with_agents_stream(request: schemas.AgentChatRequest, db: Session = Depends(get_db)):
+    # Use a default agent_id if not provided
+    agent_id = request.group_id or "default_agent"
+    
+    # Collect the streamed content
+    responder_content = ""
+    critic_content = None
+    
+    async def generate_and_save():
+        nonlocal responder_content, critic_content
+        
+        async for chunk in stream_multi_agent_chat(
+            user_message=request.message,
+            agent_id=agent_id,
+            agent_description=request.agent_description,
+            store_memory=True,
+            memory_type=request.memory_type or "long"
+        ):
+            # Parse the chunk to track content
+            try:
+                import json
+                data = json.loads(chunk.strip())
+                if data.get("type") == "responder":
+                    responder_content = data.get("content", "")
+                elif data.get("type") == "critic":
+                    critic_content = data.get("content")
+            except:
+                pass
+            yield chunk
+        
+        # After streaming completes, save messages to database if group_id provided
+        if request.group_id:
+            try:
+                # Get group and agents
+                group = db.query(models.Group).filter(models.Group.id == request.group_id).first()
+                if group:
+                    members = db.query(models.GroupMember).filter(
+                        models.GroupMember.group_id == request.group_id
+                    ).all()
+                    agent_ids = [m.agent_id for m in members]
+                    agents = db.query(models.Agent).filter(models.Agent.id.in_(agent_ids)).all()
+                    
+                    assistant_agent = None
+                    critic_agent = None
+                    for a in agents:
+                        if str(a.agent_type) == "manual":
+                            assistant_agent = a
+                        elif str(a.agent_type) == "critic":
+                            critic_agent = a
+                    
+                    # Save user message
+                    user_msg = models.Message(
+                        group_id=request.group_id,
+                        sender_id=None,
+                        sender_type="user",
+                        content=request.message
+                    )
+                    db.add(user_msg)
+                    db.commit()
+                    
+                    # Save assistant response
+                    if assistant_agent and responder_content:
+                        assistant_msg = models.Message(
+                            group_id=request.group_id,
+                            sender_id=assistant_agent.id,
+                            sender_type="agent",
+                            content=responder_content
+                        )
+                        db.add(assistant_msg)
+                        db.commit()
+                    
+                    # Save critic response as separate message
+                    if critic_agent and critic_content:
+                        # Format critic response nicely
+                        if isinstance(critic_content, dict):
+                            verdict = critic_content.get('verdict', 'N/A')
+                            feedback = critic_content.get('feedback', 'No feedback provided')
+                            critic_text = f"**Verdict:** {verdict}\n\n**Feedback:** {feedback}"
+                        else:
+                            critic_text = str(critic_content)
+                        
+                        critic_msg = models.Message(
+                            group_id=request.group_id,
+                            sender_id=critic_agent.id,
+                            sender_type="agent",
+                            content=critic_text
+                        )
+                        db.add(critic_msg)
+                        db.commit()
+            except Exception as e:
+                print(f"Error saving messages: {e}")
+    
+    return StreamingResponse(
+        generate_and_save(),
+        media_type="text/event-stream"
+    )
 
 
 @router.post("/api/init-default-agents")

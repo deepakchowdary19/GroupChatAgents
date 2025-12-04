@@ -11,4 +11,8 @@ if not AIVEN_DATABASE_URL:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
+CHROMA_API_KEY = os.getenv("CHROMA_API_KEY", "")
+CHROMA_TENANT = os.getenv("CHROMA_TENANT", "")
+CHROMA_DATABASE = os.getenv("CHROMA_DATABASE", "")
