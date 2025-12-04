@@ -60,6 +60,7 @@ class MessageCreate(BaseModel):
     content: str
     senderType: str
     senderId: Optional[str] = None
+    memory_type: Optional[str] = "long"
 
 
 class MessageResponse(BaseModel):
@@ -77,6 +78,8 @@ class MessageResponse(BaseModel):
 class AgentChatRequest(BaseModel):
     message: str
     agent_description: Optional[str] = None
+    memory_type: Optional[str] = "long"
+    group_id: Optional[str] = None
 
 
 class AgentChatResponse(BaseModel):
