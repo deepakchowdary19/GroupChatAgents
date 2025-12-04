@@ -61,7 +61,6 @@ def process_multi_agent_chat(
         
     initial_messages.append(HumanMessage(content=user_message))
     
-    # Invoke the graph
     from backend.graph import AgentState
     inputs: AgentState = {
         "messages": initial_messages,
@@ -69,7 +68,9 @@ def process_multi_agent_chat(
         "memory_type": memory_type,
         "critic_response": {},
         "final_response": "",
-        "all_responses": []
+        "all_responses": [],
+        "revision_history": [],
+        "memory_context": context if context else None  # Pass memory context to responder
     }
     
     final_state = graph_app.invoke(inputs)
@@ -145,30 +146,80 @@ async def stream_multi_agent_chat(
         "memory_type": memory_type,
         "critic_response": {},
         "final_response": "",
-        "all_responses": []
+        "all_responses": [],
+        "revision_history": [],
+        "memory_context": context if context else None  # Pass memory context to responder
     }
+    
+    # Track iteration count and responses
+    iteration = 0
+    all_responses = []  # Track all responses to pick best one
+    current_response = ""
     
     # Stream events from the graph
     async for event in graph_app.astream(inputs):
+        print(f"[ORCHESTRATOR] Event keys: {event.keys()}")
         for key, value in event.items():
+            print(f"[ORCHESTRATOR] Key: {key}, Value keys: {value.keys() if isinstance(value, dict) else type(value)}")
             if key == "responder":
-                # Yield responder's output
+                iteration += 1
+                current_response = value.get("final_response", "")
+                print(f"[ORCHESTRATOR] Responder output - final_response length: {len(current_response)}")
+                print(f"[ORCHESTRATOR] Responder output preview: {current_response[:200] if current_response else 'EMPTY'}...")
+                
+                # Track all non-empty, non-apology responses
+                is_valid_response = (
+                    current_response and 
+                    current_response.strip() and
+                    "I apologize, but I was unable to generate a response" not in current_response
+                )
+                if is_valid_response:
+                    all_responses.append(current_response)
+                
+                # Yield responder's output with iteration info
                 yield json.dumps({
                     "type": "responder",
-                    "content": value.get("final_response", "")
+                    "iteration": iteration,
+                    "content": current_response,
+                    "is_revision": iteration > 1
                 }) + "\n"
             elif key == "critic":
-                # Yield critic's output
+                # Yield critic's output with iteration info
+                critic_resp = value.get("critic_response", {})
+                print(f"[ORCHESTRATOR] Critic output: {critic_resp}")
                 yield json.dumps({
                     "type": "critic",
-                    "content": value.get("critic_response", {})
+                    "iteration": iteration,
+                    "content": critic_resp,
+                    "verdict": critic_resp.get("verdict", "unknown"),
+                    "feedback": critic_resp.get("feedback", "")
                 }) + "\n"
-                
-    # After streaming, we might want to store memory, but for now let's keep it simple.
-    # Ideally we should capture the final state to store memory.
-    # Since astream yields partial updates, we might not have the full final state easily unless we track it.
-    # For this implementation, we will skip memory storage in streaming mode or implement it if needed.
-    # User requirement: "if long memory store embeddings". 
-    # We can do a separate call to store memory after the stream is done if we had the final response.
-    # But `astream` doesn't return the final state at the end.
-    # We can reconstruct it or just use the last "responder" event as the final response.
+    
+    # Pick the best response: prefer last valid response, fallback to any valid, then current
+    if all_responses:
+        final_response = all_responses[-1]  # Use last valid response
+    else:
+        final_response = current_response  # Fallback to whatever we have
+    
+    print(f"[ORCHESTRATOR] Final response selection: {len(all_responses)} valid responses, using: {final_response[:100] if final_response else 'EMPTY'}...")
+    
+    # Yield final event to signal completion
+    yield json.dumps({
+        "type": "complete",
+        "total_iterations": iteration,
+        "final_response": final_response
+    }) + "\n"
+    
+    # Store memory after streaming is complete
+    if store_memory and memory_type == "long" and final_response:
+        try:
+            memory_store = LongTermMemoryStore(
+                memory_collection_name=f"agent_{agent_id}_memory"
+            )
+            conversation_text = f"User: {user_message}\nResponse: {final_response}"
+            memory_store.store(
+                [conversation_text], 
+                [{"type": "conversation", "agent_id": agent_id}]
+            )
+        except Exception as e:
+            print(f"Memory storage error: {e}")

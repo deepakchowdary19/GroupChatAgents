@@ -4,6 +4,7 @@ from typing import List
 from backend.database import get_db
 from backend import models, schemas
 from backend.orchestrator import process_multi_agent_chat, stream_multi_agent_chat
+from backend.memory import delete_group_memory
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
@@ -39,6 +40,15 @@ def update_agent(agent_id: str, updates: schemas.AgentUpdate, db: Session = Depe
         raise HTTPException(status_code=404, detail="Agent not found")
     
     update_data = updates.model_dump(exclude_unset=True)
+    
+    # Protect default system agents from agent_type changes
+    if agent.agent_type in ["manual", "critic"]:
+        if "agent_type" in update_data and update_data["agent_type"] not in ["manual", "critic"]:
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Cannot change agent_type of default {agent.agent_type} agent."
+            )
+    
     for key, value in update_data.items():
         setattr(agent, key, value)
     
@@ -52,6 +62,13 @@ def delete_agent(agent_id: str, db: Session = Depends(get_db)):
     agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Protect default system agents from deletion
+    if agent.agent_type in ["manual", "critic"]:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Cannot delete default {agent.agent_type} agent. This is a core system agent."
+        )
     
     db.delete(agent)
     db.commit()
@@ -154,12 +171,17 @@ def delete_group(group_id: str, db: Session = Depends(get_db)):
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
+    delete_group_memory(group_id)
+    
+    db.query(models.Message).filter(models.Message.group_id == group_id).delete()
+    db.query(models.Conversation).filter(models.Conversation.group_id == group_id).delete()
+    db.query(models.Memory).filter(models.Memory.group_id == group_id).delete()
     db.query(models.GroupMember).filter(
         models.GroupMember.group_id == group_id
     ).delete()
     db.delete(group)
     db.commit()
-    return {"message": "Group deleted"}
+    return {"message": "Group and all associated memory deleted"}
 
 
 @router.post("/api/groups/{group_id}/agents/{agent_id}")
@@ -227,10 +249,13 @@ def delete_group_messages(group_id: str, db: Session = Depends(get_db)):
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
+    delete_group_memory(group_id)
+    
     db.query(models.Message).filter(models.Message.group_id == group_id).delete()
     db.query(models.Conversation).filter(models.Conversation.group_id == group_id).delete()
+    db.query(models.Memory).filter(models.Memory.group_id == group_id).delete()
     db.commit()
-    return {"message": "Chat history deleted"}
+    return {"message": "Chat history and memory deleted"}
 
 
 @router.post("/api/groups/{group_id}/messages", response_model=List[schemas.MessageResponse])

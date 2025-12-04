@@ -111,6 +111,41 @@ class LongTermMemoryStore:
         document = Document(page_content=text, metadata=metadata or {})
         self.vectorstore.update_document(document_id=document_id, document=document)
     
+    def delete_all(self) -> bool:
+        """
+        Delete all documents in this collection.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            client = self._get_chroma_client()
+            collection = client.get_collection(name=self.collection_name)
+            all_ids = collection.get()['ids']
+            if all_ids:
+                collection.delete(ids=all_ids)
+            print(f"[MEMORY] Deleted all {len(all_ids)} documents from collection {self.collection_name}")
+            return True
+        except Exception as e:
+            print(f"[MEMORY] Error deleting documents from collection {self.collection_name}: {e}")
+            return False
+    
+    def delete_collection(self) -> bool:
+        """
+        Delete the entire collection from ChromaDB.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            client = self._get_chroma_client()
+            client.delete_collection(name=self.collection_name)
+            print(f"[MEMORY] Deleted collection {self.collection_name}")
+            return True
+        except Exception as e:
+            print(f"[MEMORY] Error deleting collection {self.collection_name}: {e}")
+            return False
+    
     def _get_chroma_client(self) -> ClientAPI:
         """Get or create Chroma client."""
         global _client
@@ -120,4 +155,23 @@ class LongTermMemoryStore:
                 tenant=CHROMA_TENANT,
                 api_key=CHROMA_API_KEY
             )
-        return _client      
+        return _client
+
+
+def delete_group_memory(group_id: str) -> bool:
+    """
+    Delete all memory associated with a group.
+    
+    Args:
+        group_id: The group ID whose memory should be deleted
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        collection_name = f"agent_{group_id}_memory"
+        memory_store = LongTermMemoryStore(memory_collection_name=collection_name)
+        return memory_store.delete_collection()
+    except Exception as e:
+        print(f"[MEMORY] Error deleting group memory for {group_id}: {e}")
+        return False      
