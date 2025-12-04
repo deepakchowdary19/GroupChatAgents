@@ -10,9 +10,55 @@ import { TypingIndicator } from './TypingIndicator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { PanelRightOpen, Users, Loader2, Trash2 } from 'lucide-react';
+import { PanelRightOpen, Users, Loader2, Trash2, Sparkles, Brain, Bot } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Agent, Message } from '@shared/schema';
+
+function AssistantAvatar({ size = 'md', isThinking = false }: { size?: 'sm' | 'md'; isThinking?: boolean }) {
+  const sizeClasses = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
+  const iconSize = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5';
+  
+  return (
+    <div className={`${sizeClasses} rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-600 flex items-center justify-center shadow-lg ${isThinking ? 'animate-pulse' : ''}`}>
+      <Bot className={`${iconSize} text-white`} />
+    </div>
+  );
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="flex gap-4 p-5 rounded-2xl bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/40 dark:to-purple-950/40 border border-violet-100 dark:border-violet-800/50 shadow-sm">
+      <div className="relative">
+        <AssistantAvatar isThinking={true} />
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-amber-400 to-orange-400 rounded-full flex items-center justify-center animate-bounce">
+          <Sparkles className="w-2.5 h-2.5 text-white" />
+        </div>
+      </div>
+      <div className="flex-1 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-sm bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+            AI Assistant
+          </span>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Brain className="w-3.5 h-3.5 text-violet-500 animate-pulse" />
+            <span>Thinking</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
+          <div className="h-2 flex-1 max-w-[200px] bg-gradient-to-r from-violet-200 via-purple-200 to-violet-200 dark:from-violet-800 dark:via-purple-800 dark:to-violet-800 rounded-full overflow-hidden">
+            <div className="h-full w-1/2 bg-gradient-to-r from-violet-400 to-purple-500 rounded-full animate-[shimmer_1.5s_ease-in-out_infinite]" 
+                 style={{ animation: 'shimmer 1.5s ease-in-out infinite' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ChatArea() {
   const { selectedGroupId, rightPanelOpen, setRightPanelOpen, setSelectedAgentId } = useUIStore();
@@ -27,6 +73,17 @@ export function ChatArea() {
   const [memoryType, setMemoryType] = useState<"short" | "long">("long");
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState(false);
+  
+  // Track all iterations for display
+  interface StreamIteration {
+    iteration: number;
+    response: string;
+    criticVerdict?: string;
+    criticFeedback?: string;
+    isRevision: boolean;
+  }
+  const [streamIterations, setStreamIterations] = useState<StreamIteration[]>([]);
+  const [currentIteration, setCurrentIteration] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +98,7 @@ export function ChatArea() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length, optimisticUserMessage, sendMessageMutation.isPending]);
+  }, [messages.length, optimisticUserMessage, sendMessageMutation.isPending, streamIterations.length]);
 
   const handleSendMessage = async (content: string) => {
     if (selectedGroupId) {
@@ -55,9 +112,8 @@ export function ChatArea() {
       };
       setOptimisticUserMessage(newOptimisticMessage);
       setIsStreaming(true);
-
-      let responderContent = "";
-      let criticResponse: any = null;
+      setStreamIterations([]);
+      setCurrentIteration(0);
 
       try {
         const response = await fetch('/api/chat/stream', {
@@ -91,10 +147,44 @@ export function ChatArea() {
               try {
                 const data = JSON.parse(line);
                 if (data.type === 'responder') {
-                  responderContent = data.content;
-                  setStreamingContent(responderContent);
+                  const iteration = data.iteration || 1;
+                  console.log(`[UI] Received responder iteration ${iteration}:`, data.content.substring(0, 100));
+                  setCurrentIteration(iteration);
+                  setStreamingContent(data.content);
+                  
+                  // Add or update iteration in the list
+                  setStreamIterations(prev => {
+                    const existing = prev.find(i => i.iteration === iteration);
+                    if (existing) {
+                      console.log(`[UI] Updating existing iteration ${iteration}`);
+                      return prev.map(i => i.iteration === iteration 
+                        ? { ...i, response: data.content }
+                        : i
+                      );
+                    }
+                    console.log(`[UI] Adding new iteration ${iteration}. Total iterations: ${prev.length + 1}`);
+                    return [...prev, {
+                      iteration,
+                      response: data.content,
+                      isRevision: data.is_revision || false
+                    }];
+                  });
                 } else if (data.type === 'critic') {
-                  criticResponse = data.content;
+                  const iteration = data.iteration || currentIteration;
+                  console.log(`[UI] Received critic feedback for iteration ${iteration}:`, data.verdict);
+                  // Update the iteration with critic feedback
+                  setStreamIterations(prev => 
+                    prev.map(i => i.iteration === iteration 
+                      ? { 
+                          ...i, 
+                          criticVerdict: data.verdict,
+                          criticFeedback: data.feedback 
+                        }
+                      : i
+                    )
+                  );
+                } else if (data.type === 'complete') {
+                  console.log(`[UI] Completed with ${data.total_iterations} iterations`);
                 }
               } catch (e) {
                 console.error('Error parsing JSON:', e);
@@ -109,6 +199,8 @@ export function ChatArea() {
         setIsStreaming(false);
         setOptimisticUserMessage(null);
         setStreamingContent("");
+        setStreamIterations([]);
+        setCurrentIteration(0);
         // Refetch messages to show the saved messages from backend
         queryClient.invalidateQueries({ queryKey: ['/api/groups', selectedGroupId, 'messages'] });
       }
@@ -218,23 +310,86 @@ export function ChatArea() {
               {optimisticUserMessage && (
                 <ChatMessage message={optimisticUserMessage} />
               )}
-              {isStreaming && (
-                <div className="flex gap-3 p-4 rounded-lg bg-muted/50">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm">Assistant</span>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex gap-0.5">
-                          <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
-                          <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
-                          <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
-                        </span>
-                        typing
-                      </span>
+              {isStreaming && streamIterations.length > 0 && (
+                <div className="space-y-4">
+                  {[...streamIterations].sort((a, b) => a.iteration - b.iteration).map((iter, idx) => (
+                    <div key={`iteration-${iter.iteration}`} className="space-y-3">
+                      {/* Agent Response */}
+                      <div className="flex gap-4 p-5 rounded-2xl bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-900/50 dark:to-gray-900/50 border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                        <div className="relative flex-shrink-0">
+                          <AssistantAvatar size="md" isThinking={idx === streamIterations.length - 1 && !iter.criticVerdict} />
+                          {idx === streamIterations.length - 1 && !iter.criticVerdict && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-amber-400 to-orange-400 rounded-full flex items-center justify-center animate-bounce">
+                              <Sparkles className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-2 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+                              AI Assistant
+                            </span>
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                              iter.isRevision 
+                                ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300' 
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                            }`}>
+                              {iter.isRevision ? `Revision ${iter.iteration - 1}` : 'Initial Response'}
+                            </span>
+                            {idx === streamIterations.length - 1 && !iter.criticVerdict && (
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Brain className="w-3.5 h-3.5 text-violet-500 animate-pulse" />
+                                <span>Awaiting review...</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-sm whitespace-pre-wrap leading-relaxed">{iter.response}</div>
+                        </div>
+                      </div>
+                      
+                      {/* Critic Response */}
+                      {iter.criticVerdict && (
+                        <div className={`flex gap-4 p-4 rounded-xl ml-6 border shadow-sm ${
+                          iter.criticVerdict === 'good' || iter.criticVerdict === 'approved'
+                            ? 'bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/40 dark:to-green-950/40 border-emerald-200 dark:border-emerald-800/50'
+                            : 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-amber-200 dark:border-amber-800/50'
+                        }`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            iter.criticVerdict === 'good' || iter.criticVerdict === 'approved'
+                              ? 'bg-gradient-to-br from-emerald-400 to-green-500'
+                              : 'bg-gradient-to-br from-amber-400 to-orange-500'
+                          }`}>
+                            <span className="text-white text-sm font-bold">C</span>
+                          </div>
+                          <div className="flex-1 space-y-2 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`font-semibold text-sm ${
+                                iter.criticVerdict === 'good' || iter.criticVerdict === 'approved'
+                                  ? 'text-emerald-700 dark:text-emerald-300'
+                                  : 'text-amber-700 dark:text-amber-300'
+                              }`}>Critic Agent</span>
+                              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                                iter.criticVerdict === 'good' || iter.criticVerdict === 'approved' 
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' 
+                                  : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                              }`}>
+                                {iter.criticVerdict === 'good' || iter.criticVerdict === 'approved' ? 'Approved' : 'Needs Revision'}
+                              </span>
+                            </div>
+                            {iter.criticFeedback && (
+                              <div className="text-sm text-muted-foreground leading-relaxed">{iter.criticFeedback}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-sm whitespace-pre-wrap">{streamingContent}</div>
-                  </div>
+                  ))}
                 </div>
+              )}
+              
+              {/* Show beautiful thinking indicator when waiting for first response */}
+              {isStreaming && streamIterations.length === 0 && (
+                <ThinkingIndicator />
               )}
               {sendMessageMutation.isPending && groupAgentsList.length > 0 && (
                 <>

@@ -49,8 +49,13 @@ class CriticAgent:
         Returns:
             Dictionary with verdict, feedback, evidence, and sources
         """
-        # Construct the evaluation message
+        from datetime import datetime
+        current_date = datetime.now().strftime("%B %d, %Y")
+        
+        # Construct the evaluation message with current date
         user_message = f"""
+IMPORTANT: Today's date is {current_date}. When evaluating answers about recent events, dates in 2024 or 2025 are NOT in the future - they are recent past events.
+
 Question: {question}
 
 Answer to Evaluate:
@@ -59,7 +64,10 @@ Answer to Evaluate:
         if context:
             user_message += f"\nAdditional Context:\n{context}"
         
-        user_message += "\n\nPlease evaluate this answer and provide your critique in JSON format with keys: verdict, feedback, evidence, sources."
+        user_message += """
+
+Please evaluate this answer and provide your critique in JSON format with keys: verdict, feedback, evidence, sources.
+CRITICAL: Do NOT reject answers just because they mention recent dates. If the answer contains factual information based on search results, approve it with verdict 'good'."""
         
         try:
             # Invoke the agent with messages
